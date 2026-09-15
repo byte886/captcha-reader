@@ -16,24 +16,20 @@ compatibility: "仅在 macOS(Darwin) 实测可用；Windows/Linux 未适配。�
 ## 前置依赖
 
 - Python3 + Pillow：`pip3 install Pillow`
-- 浏览器自动化工具，二选一：
-  - **Playwright Agent CLI**（面向 Agent 的交互式 CLI，基于无障碍快照 + 元素 ref）：全局 `npm install -g @playwright/cli` 后用 `playwright-cli`；或项目本地已装 playwright 时用 `npx playwright cli`。下文统一写 `npx playwright cli`，全局安装时可等价替换为 `playwright-cli`。需先 `npx playwright cli -s=<会话名> open "<验证码页面URL>"` 建立命名会话，之后每条命令都带 `-s=<会话名>` 复用同一浏览器（参考 https://playwright.dev/agent-cli/introduction ）。
-  - **Chrome MCP**：用 `mcp__chrome__*` 系列工具（take_snapshot / take_screenshot / fill / click）。
+- 图像增强脚本：技能自带 `scripts/enhance_captcha.py`（步骤 3 调用）。
+- **浏览器侧动作（打开页面、定位验证码元素、对元素截图、填值、点击）统一交给浏览器控制能力（mac-system-toolkit，按其当前可用栈：bu plane / Playwright / CDP）**。本技能不绑定具体 CLI 语法、也不复制其命令，只约定交接物：
+  1. 对验证码 `<img>` 元素截图，存成 `/tmp/captcha_raw.png`；
+  2. 拿到验证码输入框（textbox）与提交按钮的定位；
+  3. 把步骤 4 识别出的字符串填进输入框并提交。
 
 ## 工作流程
 
 ### 1. 定位验证码元素
 
-通过 snapshot 获取验证码图片和输入框的 ref：
+用浏览器控制能力取页面无障碍快照，按关键词定位验证码图片与输入框：
 
-```bash
-# Playwright CLI：首次先 open 建立命名会话（已建立则跳过）
-npx playwright cli -s=<session> open "<验证码页面URL>"
-# 取无障碍快照，按关键词定位验证码 img 与输入框的元素 ref
-npx playwright cli -s=<session> snapshot | grep -iE "captcha|challenge|characters|验证码"
-
-# Chrome MCP: 使用 mcp__chrome__take_snapshot
-```
+- 快照里按 `captcha|challenge|characters|验证码` 等关键词找验证码 `<img>` 与输入框元素；
+- 具体 snapshot / 定位命令用浏览器控制能力（mac-system-toolkit）的当前用法，本技能不写死。
 
 验证码通常包含：
 - 一个 `img` 元素（alt 含 "Image challenge" / "captcha" / "验证码"）
@@ -42,12 +38,7 @@ npx playwright cli -s=<session> snapshot | grep -iE "captcha|challenge|character
 
 ### 2. 截取验证码图片
 
-```bash
-# Playwright CLI — 截取验证码 img 元素
-npx playwright cli -s=<session> screenshot <img_ref> --filename=/tmp/captcha_raw.png
-
-# Chrome MCP — 使用 mcp__chrome__take_screenshot 传入 uid
-```
+用浏览器控制能力对步骤 1 定位到的验证码 `<img>` **元素截图**（截元素而非整屏，避免背景噪声），存成 `/tmp/captcha_raw.png`，供步骤 3 增强。
 
 ### 3. 图像增强
 
@@ -82,15 +73,10 @@ python3 "$SKILL_DIR/scripts/enhance_captcha.py" /tmp/captcha_raw.png /tmp/captch
 
 ### 5. 填入并提交
 
-```bash
-# Playwright CLI
-npx playwright cli -s=<session> fill <textbox_ref> "<识别的验证码>"
-# 等待提交按钮启用后点击
-npx playwright cli -s=<session> snapshot | grep "Continue\|提交\|确认"
-npx playwright cli -s=<session> click <button_ref>
+用浏览器控制能力把识别字符串填进验证码输入框，等提交按钮启用后点击：
 
-# Chrome MCP: 使用 mcp__chrome__fill + mcp__chrome__click
-```
+- 填值后按钮仍禁用时，先 snapshot 确认是否还有别的必填项、或验证码尚未被页面判为有效；
+- 具体 fill / click 命令用浏览器控制能力（mac-system-toolkit）的当前用法。
 
 ### 6. 验证结果
 
