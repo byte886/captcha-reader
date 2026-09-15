@@ -16,7 +16,9 @@ compatibility: "仅在 macOS(Darwin) 实测可用；Windows/Linux 未适配。�
 ## 前置依赖
 
 - Python3 + Pillow：`pip3 install Pillow`
-- 浏览器自动化工具（Playwright CLI 或 Chrome MCP）
+- 浏览器自动化工具，二选一：
+  - **Playwright Agent CLI**（面向 Agent 的交互式 CLI，基于无障碍快照 + 元素 ref）：全局 `npm install -g @playwright/cli` 后用 `playwright-cli`；或项目本地已装 playwright 时用 `npx playwright cli`。下文统一写 `npx playwright cli`，全局安装时可等价替换为 `playwright-cli`。需先 `npx playwright cli -s=<会话名> open "<验证码页面URL>"` 建立命名会话，之后每条命令都带 `-s=<会话名>` 复用同一浏览器（参考 https://playwright.dev/agent-cli/introduction ）。
+  - **Chrome MCP**：用 `mcp__chrome__*` 系列工具（take_snapshot / take_screenshot / fill / click）。
 
 ## 工作流程
 
@@ -25,7 +27,9 @@ compatibility: "仅在 macOS(Darwin) 实测可用；Windows/Linux 未适配。�
 通过 snapshot 获取验证码图片和输入框的 ref：
 
 ```bash
-# Playwright CLI
+# Playwright CLI：首次先 open 建立命名会话（已建立则跳过）
+npx playwright cli -s=<session> open "<验证码页面URL>"
+# 取无障碍快照，按关键词定位验证码 img 与输入框的元素 ref
 npx playwright cli -s=<session> snapshot | grep -iE "captcha|challenge|characters|验证码"
 
 # Chrome MCP: 使用 mcp__chrome__take_snapshot
@@ -50,17 +54,20 @@ npx playwright cli -s=<session> screenshot <img_ref> --filename=/tmp/captcha_raw
 运行增强脚本生成放大、高对比度版本：
 
 ```bash
+# $SKILL_DIR 为本技能目录（双机家目录名不同，一律用 $HOME 派生，不写死）
+SKILL_DIR="$HOME/Doubao/skills/captcha-reader"
+
 # 基础增强（灰度 + 6x放大 + 对比度2.5 + 锐化）
-python3 <skill_dir>/scripts/enhance_captcha.py /tmp/captcha_raw.png /tmp/captcha_enhanced.png
+python3 "$SKILL_DIR/scripts/enhance_captcha.py" /tmp/captcha_raw.png /tmp/captcha_enhanced.png
 
 # 如果基础增强仍看不清，尝试二值化（黑白）
-python3 <skill_dir>/scripts/enhance_captcha.py /tmp/captcha_raw.png /tmp/captcha_bw.png --threshold
+python3 "$SKILL_DIR/scripts/enhance_captcha.py" /tmp/captcha_raw.png /tmp/captcha_bw.png --threshold
 
 # 更大放大倍数 + 更高对比度
-python3 <skill_dir>/scripts/enhance_captcha.py /tmp/captcha_raw.png /tmp/captcha_big.png --scale 8 --contrast 3.0
+python3 "$SKILL_DIR/scripts/enhance_captcha.py" /tmp/captcha_raw.png /tmp/captcha_big.png --scale 8 --contrast 3.0
 
 # 反色（浅色背景深色文字时尝试）
-python3 <skill_dir>/scripts/enhance_captcha.py /tmp/captcha_raw.png /tmp/captcha_inv.png --invert
+python3 "$SKILL_DIR/scripts/enhance_captcha.py" /tmp/captcha_raw.png /tmp/captcha_inv.png --invert
 ```
 
 ### 4. AI 视觉读取
@@ -97,9 +104,10 @@ npx playwright cli -s=<session> click <button_ref>
 当验证码难以辨认时，一次性生成多个增强版本对比读取：
 
 ```bash
-python3 <skill_dir>/scripts/enhance_captcha.py raw.png enhanced.png
-python3 <skill_dir>/scripts/enhance_captcha.py raw.png bw.png --threshold
-python3 <skill_dir>/scripts/enhance_captcha.py raw.png big.png --scale 8 --contrast 3.5
+SKILL_DIR="$HOME/Doubao/skills/captcha-reader"   # 若同一会话上方已定义可省略
+python3 "$SKILL_DIR/scripts/enhance_captcha.py" raw.png enhanced.png
+python3 "$SKILL_DIR/scripts/enhance_captcha.py" raw.png bw.png --threshold
+python3 "$SKILL_DIR/scripts/enhance_captcha.py" raw.png big.png --scale 8 --contrast 3.5
 ```
 
 逐个 Read 三张图，取一致识别结果。
